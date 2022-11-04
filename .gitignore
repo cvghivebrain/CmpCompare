@@ -1,4 +1,5 @@
 
 __history/*
-bin/*
+bin/*.exe
+bin/*.dll
 *.identcache
