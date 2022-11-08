@@ -16,12 +16,21 @@ object Form1: TForm1
   OnCreate = FormCreate
   PixelsPerInch = 96
   TextHeight = 13
+  object lblCredits: TLabel
+    Left = 744
+    Top = 9
+    Width = 129
+    Height = 26
+    Alignment = taRightJustify
+    Caption = 'Programmed by Hivebrain github.com/cvghivebrain'
+    WordWrap = True
+  end
   object btnFile: TButton
     Left = 8
     Top = 8
     Width = 177
     Height = 27
-    Caption = 'Select File'
+    Caption = 'Select Test File'
     TabOrder = 0
     OnClick = btnFileClick
   end

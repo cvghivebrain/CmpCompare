@@ -11,6 +11,7 @@ type
     btnFile: TButton;
     memoOut: TMemo;
     dlgOpen: TOpenDialog;
+    lblCredits: TLabel;
     procedure FormCreate(Sender: TObject);
     procedure btnFileClick(Sender: TObject);
   private
@@ -18,6 +19,7 @@ type
     procedure AddLine(s: string; size: integer; percent: single);
     function PadString(s: string; i: integer): string;
     function GetSize(s: string): integer;
+    function ExeName(s: string): string;
     procedure RunCommand(id: integer; exename, infile, outfile: string);
     procedure RunCommand_(command: string);
     function FindCommand(exename: string): boolean;
@@ -27,8 +29,6 @@ type
 
 var
   Form1: TForm1;
-  inifile: textfile;
-  thisfolder, testfile: string;
   commands: array of string;
 
 implementation
@@ -40,13 +40,13 @@ implementation
 procedure TForm1.FormCreate(Sender: TObject);
 var inifile: textfile;
   s: string;
+const inipath: string = 'bin\commands.ini';
 begin
-  thisfolder := ExtractFilePath(Application.ExeName); // Get folder for this program.
-  if FileExists('bin\commands.ini') then // Check if ini file exists.
+  if FileExists(inipath) then // Check if ini file exists.
     begin
-    AssignFile(inifile,'bin\commands.ini'); // Open ini file.
+    AssignFile(inifile,inipath); // Open ini file.
     Reset(inifile);
-    while not eof(inifile) do
+    while not eof(inifile) do // Read every line.
       begin
       ReadLn(inifile,s);
       if s <> '' then // Check if line is blank.
@@ -59,7 +59,7 @@ begin
     end
   else
     begin
-    ShowMessage('bin\commands.ini not found.'); // ini file missing.
+    ShowMessage(inipath+' not found.'); // ini file missing.
     btnFile.Enabled := false; // Prevent further actions.
     end;
 end;
@@ -67,21 +67,23 @@ end;
 procedure TForm1.btnFileClick(Sender: TObject);
 var rec: TSearchRec;
   insize, outsize, i: integer;
+  infile: string;
+const outfile: string = 'temp.bin';
 begin
   if dlgOpen.Execute then
     begin
-    testfile := dlgOpen.FileName;
-    insize := GetSize(testfile); // Get size of uncompressed file.
-    AddLine('Uncompressed',insize,0);
-    if FindFirst(thisfolder+'bin\*.exe', faAnyFile-faDirectory, rec) = 0 then // Every exe file in bin folder.
+    infile := dlgOpen.FileName;
+    insize := GetSize(infile); // Get size of uncompressed file.
+    AddLine('Uncompressed',insize,0); // Add line showing size of uncompressed file.
+    if FindFirst('bin\*.exe', faAnyFile-faDirectory, rec) = 0 then // Every exe file in bin folder.
       begin
       repeat
       if FindCommand('bin\'+rec.Name) = false then // Check if exe has its own command in ini file.
         begin
-        RunCommand(0,'bin\'+rec.Name,testfile,'temp.bin'); // Run exe and create temp file.
-        outsize := GetSize(thisfolder+'temp.bin'); // Get size of compressed file.
+        RunCommand(0,'bin\'+rec.Name,infile,outfile); // Run exe and create temp file.
+        outsize := GetSize(outfile); // Get size of compressed file.
         if outsize > 0 then AddLine(rec.Name,outsize,outsize/insize);
-        DeleteFile(thisfolder+'temp.bin'); // Delete temp file.
+        DeleteFile(outfile); // Delete temp file.
         end;
       until FindNext(rec) <>0;
       FindClose(rec);
@@ -89,13 +91,15 @@ begin
     if Length(commands) > 1 then // Check if additional commands are listed in ini.
       for i := 1 to Length(commands)-1 do
         begin
-        RunCommand(i,'',testfile,'temp.bin'); // Run exe and create temp file.
-        outsize := GetSize(thisfolder+'temp.bin'); // Get size of compressed file.
-        if outsize > 0 then AddLine(Explode(Explode(commands[i],'.exe',0),'\',1)+'.exe',outsize,outsize/insize);
-        DeleteFile(thisfolder+'temp.bin'); // Delete temp file.
+        RunCommand(i,'',infile,outfile); // Run exe and create temp file.
+        outsize := GetSize(outfile); // Get size of compressed file.
+        if outsize > 0 then AddLine(ExeName(commands[i]),outsize,outsize/insize);
+        DeleteFile(outfile); // Delete temp file.
         end;
     end;
 end;
+
+{ Add line to text area comprising exe name, compressed file size and compression ratio. }
 
 procedure TForm1.AddLine(s: string; size: integer; percent: single);
 begin
@@ -105,11 +109,22 @@ begin
   memoOut.Lines.Add(s);
 end;
 
+{ Add spaces to string until it's the specified length. }
+
 function TForm1.PadString(s: string; i: integer): string;
 begin
-  while Length(s) < i do s := s+' '; // Add spaces until string is specified length.
+  while Length(s) < i do s := s+' '; // Add spaces.
   result := s;
 end;
+
+{ Get the name of an exe file from a string. }
+
+function TForm1.ExeName(s: string): string;
+begin
+  result := ExtractFileName(Explode(s,'.exe',0)+'.exe');
+end;
+
+{ Get file size. }
 
 function TForm1.GetSize(s: string): integer;
 var myfile: file;
@@ -124,6 +139,8 @@ begin
   else result := 0; // Return 0 if file not found.
 end;
 
+{ Run command as described in the ini file. }
+
 procedure TForm1.RunCommand(id: integer; exename, infile, outfile: string);
 var s: string;
 begin
@@ -133,6 +150,8 @@ begin
   RunCommand_(s); // Actually run command.
 end;
 
+{ Actually run command. }
+
 procedure TForm1.RunCommand_(command: string);
 var StartInfo: TStartupInfo;
   ProcInfo: TProcessInformation;
@@ -140,11 +159,8 @@ begin
   FillChar(StartInfo,SizeOf(TStartupInfo),#0);
   FillChar(ProcInfo,SizeOf(TProcessInformation),#0);
   StartInfo.cb := SizeOf(TStartupInfo);
-  // Run program.
   if not CreateProcess(nil,PChar(command),nil,nil,false,CREATE_NEW_PROCESS_GROUP+NORMAL_PRIORITY_CLASS+CREATE_NO_WINDOW,nil,nil,StartInfo,ProcInfo) then
-    begin
-    memoOut.Lines.Add('Command failed - '+command);
-    end
+    memoOut.Lines.Add('Command failed - '+command) // Command fail.
   else
     begin
     while WaitForSingleObject(ProcInfo.hProcess, 10) > 0 do Application.ProcessMessages;
@@ -152,6 +168,8 @@ begin
     CloseHandle(ProcInfo.hThread);
     end;
 end;
+
+{ Return true if any commands listed in ini file contain the name of a specific program. }
 
 function TForm1.FindCommand(exename: string): boolean;
 var i: integer;
